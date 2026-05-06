@@ -1,7 +1,5 @@
-// ================= API CONFIG =================
-const API_URL = "http://127.0.0.1:5000";
-// AFTER DEPLOYMENT CHANGE TO:
-// const API_URL = "https://your-app-name.onrender.com";
+// ================= API CONFIG (DEPLOYED VERSION) =================
+const API_URL = "https://clinic-system-799b.onrender.com";
 
 
 // ================= REGISTER =================
@@ -30,16 +28,12 @@ window.register = function () {
         headers: {
             "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-            username,
-            email,
-            password
-        })
+        body: JSON.stringify({ username, email, password })
     })
     .then(res => res.json())
     .then(data => {
 
-        msg.innerText = data.message;
+        msg.innerText = data.message || "Response received";
 
         if (data.message === "User registered successfully") {
             msg.style.color = "green";
@@ -52,8 +46,9 @@ window.register = function () {
             msg.style.color = "red";
         }
     })
-    .catch(() => {
-        msg.innerText = "Server error";
+    .catch(err => {
+        console.error("Register error:", err);
+        msg.innerText = "Server not reachable";
         msg.style.color = "red";
     });
 };
@@ -82,12 +77,12 @@ window.login = function () {
     .then(res => res.json())
     .then(data => {
 
-        if (data.username) {
+        if (data && data.username) {
 
             msg.innerText = "Login successful";
             msg.style.color = "green";
 
-            // store session only (NOT database)
+            // store session
             sessionStorage.setItem("user", JSON.stringify(data));
 
             setTimeout(() => {
@@ -95,12 +90,13 @@ window.login = function () {
             }, 1000);
 
         } else {
-            msg.innerText = data.message;
+            msg.innerText = data.message || "Invalid credentials";
             msg.style.color = "red";
         }
     })
-    .catch(() => {
-        msg.innerText = "Server error";
+    .catch(err => {
+        console.error("Login error:", err);
+        msg.innerText = "Server not reachable";
         msg.style.color = "red";
     });
 };
@@ -110,8 +106,8 @@ window.login = function () {
 window.onload = function () {
 
     const user = JSON.parse(sessionStorage.getItem("user"));
-
     const usernameSpan = document.getElementById("username");
+
     if (user && usernameSpan) {
         usernameSpan.innerText = user.username;
     }
@@ -119,7 +115,7 @@ window.onload = function () {
     const sidebar = document.getElementById("sidebar");
     if (!sidebar) return;
 
-    let role = "STUDENT";
+    let role = user ? user.role : "STUDENT";
 
     let buttonsHtml = `<h2 class="logo">Botho University Clinic</h2>`;
 
@@ -144,18 +140,17 @@ window.onload = function () {
 
     sidebar.innerHTML = buttonsHtml;
 
-    showSection("portal");
+    showSection(role === "ADMIN" ? "adminServices" : "portal");
 };
 
 
-// ================= SHOW SECTIONS =================
+// ================= SHOW SECTION =================
 window.showSection = function (section) {
 
     const content = document.getElementById("content");
     if (!content) return;
 
     if (section === "portal") {
-
         const user = JSON.parse(sessionStorage.getItem("user"));
 
         content.innerHTML = `
@@ -167,7 +162,7 @@ window.showSection = function (section) {
     else if (section === "services") {
         content.innerHTML = `
             <h3>Clinic Services</h3>
-            <p>Services are loaded from backend (you can connect later).</p>
+            <p>Services are loaded from backend.</p>
         `;
     }
 
@@ -210,7 +205,7 @@ window.showSection = function (section) {
 };
 
 
-// ================= AI (PLACEHOLDER) =================
+// ================= AI =================
 window.askAI = function () {
 
     const input = document.getElementById("aiInput").value;
@@ -221,7 +216,7 @@ window.askAI = function () {
         return;
     }
 
-    response.innerText = "AI Response: " + input + " (backend AI will be added later)";
+    response.innerText = "AI: " + input + " (backend AI not connected yet)";
 };
 
 
