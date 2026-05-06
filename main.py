@@ -10,11 +10,20 @@ CORS(app)
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 def get_db():
-    return psycopg2.connect(DATABASE_URL)
+    try:
+        return psycopg2.connect(DATABASE_URL)
+    except Exception as e:
+        print("DB connection error:", e)
+        return None
 
-# ================= INIT =================
-def init():
+
+# ================= INIT DATABASE SAFE =================
+def init_db():
     conn = get_db()
+    if conn is None:
+        print("Database not ready yet")
+        return
+
     cur = conn.cursor()
 
     cur.execute("""
@@ -31,7 +40,13 @@ def init():
     cur.close()
     conn.close()
 
-init()
+
+# Run safely (Render-safe)
+try:
+    init_db()
+except Exception as e:
+    print("Init DB failed:", e)
+
 
 # ================= REGISTER =================
 @app.route("/register", methods=["POST"])
@@ -39,6 +54,9 @@ def register():
     data = request.get_json()
 
     conn = get_db()
+    if conn is None:
+        return jsonify({"error": "Database not connected"}), 500
+
     cur = conn.cursor()
 
     try:
@@ -47,14 +65,16 @@ def register():
             (data["username"], data["email"], data["password"], "student")
         )
         conn.commit()
+
         return jsonify({"message": "User registered successfully"})
 
     except Exception as e:
-        return jsonify({"error": str(e)})
+        return jsonify({"error": str(e)}), 400
 
     finally:
         cur.close()
         conn.close()
+
 
 # ================= LOGIN =================
 @app.route("/login", methods=["POST"])
@@ -62,6 +82,9 @@ def login():
     data = request.get_json()
 
     conn = get_db()
+    if conn is None:
+        return jsonify({"error": "Database not connected"}), 500
+
     cur = conn.cursor()
 
     cur.execute(
@@ -85,6 +108,12 @@ def login():
     return jsonify({"error": "Invalid credentials"}), 401
 
 
+# ================= HEALTH CHECK (IMPORTANT FOR RENDER) =================
+@app.route("/")
+def home():
+    return jsonify({"status": "Clinic API running"})
+
+
 # ================= RUN =================
 if __name__ == "__main__":
-    app.run()
+    app.run(host="0.0.0.0", port=10000)
