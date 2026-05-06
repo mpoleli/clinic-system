@@ -1,94 +1,90 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import sqlite3
-from datetime import datetime
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import psycopg2
+import os
 
-app = FastAPI()
-
-# ================= CORS (IMPORTANT FOR HTML/JS) =================
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # allows all devices (hosting safe)
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = Flask(__name__)
+CORS(app)
 
 # ================= DATABASE =================
-conn = sqlite3.connect("users.db", check_same_thread=False)
-cursor = conn.cursor()
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE,
-    password TEXT,
-    username TEXT,
-    user_type TEXT,
-    last_login TEXT
-)
-""")
-conn.commit()
+def get_db():
+    return psycopg2.connect(DATABASE_URL)
 
-# ================= REQUEST MODEL =================
-class UserRegister(BaseModel):
-    username: str
-    email: str
-    password: str
+# ================= INIT =================
+def init():
+    conn = get_db()
+    cur = conn.cursor()
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username TEXT,
+            email TEXT UNIQUE,
+            password TEXT,
+            user_type TEXT DEFAULT 'student'
+        )
+    """)
 
-class UserLogin(BaseModel):
-    email: str
-    password: str
+    conn.commit()
+    cur.close()
+    conn.close()
 
+init()
 
 # ================= REGISTER =================
-@app.post("/register")
-def register(user: UserRegister):
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.get_json()
+
+    conn = get_db()
+    cur = conn.cursor()
+
     try:
-        cursor.execute(
-            "INSERT INTO users (email, password, username, user_type, last_login) VALUES (?, ?, ?, ?, ?)",
-            (
-                user.email,
-                user.password,
-                user.username,
-                "student",
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            )
+        cur.execute(
+            "INSERT INTO users (username, email, password, user_type) VALUES (%s, %s, %s, %s)",
+            (data["username"], data["email"], data["password"], "student")
         )
         conn.commit()
-
-        return {"message": "User registered successfully"}
-
-    except sqlite3.IntegrityError:
-        return {"error": "Email already registered"}
+        return jsonify({"message": "User registered successfully"})
 
     except Exception as e:
-        return {"error": str(e)}
+        return jsonify({"error": str(e)})
 
+    finally:
+        cur.close()
+        conn.close()
 
 # ================= LOGIN =================
-@app.post("/login")
-def login(user: UserLogin):
-    cursor.execute(
-        "SELECT id, username, user_type FROM users WHERE email=? AND password=?",
-        (user.email, user.password)
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.get_json()
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        "SELECT id, username, user_type FROM users WHERE email=%s AND password=%s",
+        (data["email"], data["password"])
     )
-    result = cursor.fetchone()
 
-    if result:
-        return {
+    user = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if user:
+        return jsonify({
             "message": "Login successful",
-            "user_id": result[0],
-            "username": result[1],
-            "user_type": result[2]
-        }
+            "user_id": user[0],
+            "username": user[1],
+            "user_type": user[2]
+        })
 
-    return {"error": "Invalid email or password"}
+    return jsonify({"error": "Invalid credentials"}), 401
 
 
-# ================= TEST =================
-@app.get("/")
-def home():
-    return {"message": "Backend is running successfully"}
+# ================= RUN =================
+if __name__ == "__main__":
+    app.run()
