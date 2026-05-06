@@ -111,7 +111,7 @@ def login():
 # ================= HEALTH CHECK (IMPORTANT FOR RENDER) =================
 @app.route("/")
 def home():
-    return jsonify({"status": "Clinic API running"})
+    return render_template("login.html")
 
 
 # ================= RUN =================
