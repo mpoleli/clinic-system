@@ -1,4 +1,4 @@
-const API_URL = "http://127.0.0.1:10000";
+const API_URL = "https://clinic-system-ugj1.onrender.com";
 
 // ================= REGISTER =================
 window.register = async function () {
