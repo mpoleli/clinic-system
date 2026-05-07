@@ -1,227 +1,126 @@
-// ================= API CONFIG (DEPLOYED VERSION) =================
-const API_URL = "https://clinic-system-799b.onrender.com";
-
+const API_URL = "http://127.0.0.1:10000";
 
 // ================= REGISTER =================
-window.register = function () {
-
+window.register = async function () {
     const username = document.getElementById("regUsername").value;
     const email = document.getElementById("regEmail").value;
     const password = document.getElementById("regPassword").value;
-    const confirmPassword = document.getElementById("regConfirmPassword").value;
     const msg = document.getElementById("regMsg");
 
-    if (!username || !email || !password || !confirmPassword) {
-        msg.innerText = "All fields are required";
-        msg.style.color = "red";
-        return;
-    }
+    try {
+        const res = await fetch(`${API_URL}/register`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, email, password })
+        });
 
-    if (password !== confirmPassword) {
-        msg.innerText = "Passwords do not match";
-        msg.style.color = "red";
-        return;
-    }
+        const data = await res.json();
 
-    fetch(`${API_URL}/register`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ username, email, password })
-    })
-    .then(res => res.json())
-    .then(data => {
-
-        msg.innerText = data.message || "Response received";
-
-        if (data.message === "User registered successfully") {
+        if (res.ok) {
             msg.style.color = "green";
+            msg.innerText = data.message;
 
             setTimeout(() => {
                 window.location.href = "login.html";
-            }, 1200);
-
+            }, 1000);
         } else {
             msg.style.color = "red";
+            msg.innerText = data.message;
         }
-    })
-    .catch(err => {
-        console.error("Register error:", err);
+    } catch {
         msg.innerText = "Server not reachable";
-        msg.style.color = "red";
-    });
+    }
 };
 
-
 // ================= LOGIN =================
-window.login = function () {
-
+window.login = async function () {
     const email = document.getElementById("loginEmail").value;
     const password = document.getElementById("loginPassword").value;
     const msg = document.getElementById("loginMsg");
 
-    if (!email || !password) {
-        msg.innerText = "All fields are required";
-        msg.style.color = "red";
-        return;
-    }
+    try {
+        const res = await fetch(`${API_URL}/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password })
+        });
 
-    fetch(`${API_URL}/login`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ email, password })
-    })
-    .then(res => res.json())
-    .then(data => {
+        const data = await res.json();
 
-        if (data && data.username) {
+        if (res.ok) {
+            localStorage.setItem("user", JSON.stringify(data));
 
-            msg.innerText = "Login successful";
             msg.style.color = "green";
-
-            // store session
-            sessionStorage.setItem("user", JSON.stringify(data));
+            msg.innerText = "Login successful";
 
             setTimeout(() => {
                 window.location.href = "user.dashboard.html";
             }, 1000);
-
         } else {
-            msg.innerText = data.message || "Invalid credentials";
             msg.style.color = "red";
+            msg.innerText = data.message;
         }
-    })
-    .catch(err => {
-        console.error("Login error:", err);
+    } catch {
         msg.innerText = "Server not reachable";
-        msg.style.color = "red";
-    });
+    }
 };
-
 
 // ================= DASHBOARD LOAD =================
 window.onload = function () {
+    const user = JSON.parse(localStorage.getItem("user"));
 
-    const user = JSON.parse(sessionStorage.getItem("user"));
-    const usernameSpan = document.getElementById("username");
+    if (!user) return;
 
-    if (user && usernameSpan) {
-        usernameSpan.innerText = user.username;
-    }
+    const username = document.getElementById("username");
+    if (username) username.innerText = user.username;
 
     const sidebar = document.getElementById("sidebar");
     if (!sidebar) return;
 
-    let role = user ? user.role : "STUDENT";
+    let html = `<h2 class="logo">Botho Clinic</h2>`;
 
-    let buttonsHtml = `<h2 class="logo">Botho University Clinic</h2>`;
-
-    if (role === "ADMIN") {
-        buttonsHtml += `
-            <button onclick="showSection('adminServices')">📋 Manage Services</button>
-            <button onclick="showSection('adminUsers')">👥 Manage Users</button>
-            <button onclick="logout()">🚪 Logout</button>
+    if (user.role === "ADMIN") {
+        html += `
+            <button onclick="showSection('adminServices')">Manage Services</button>
+            <button onclick="showSection('adminUsers')">Users</button>
         `;
     } else {
-        buttonsHtml += `
-            <button onclick="showSection('portal')">🏠 Portal</button>
-            <button onclick="showSection('services')">🏥 Services</button>
-            <button onclick="showSection('location')">📍 Location</button>
-            <button onclick="showSection('about')">ℹ️ About</button>
-            <button onclick="showSection('support')">💬 Support</button>
-            <button onclick="showSection('ai')">🤖 AI</button>
-            <button onclick="showSection('announcements')">📢 Announcements</button>
-            <button onclick="logout()">🚪 Logout</button>
+        html += `
+            <button onclick="showSection('portal')">Portal</button>
+            <button onclick="showSection('services')">Services</button>
         `;
     }
 
-    sidebar.innerHTML = buttonsHtml;
+    html += `<button onclick="logout()">Logout</button>`;
+    sidebar.innerHTML = html;
 
-    showSection(role === "ADMIN" ? "adminServices" : "portal");
+    showSection("portal");
 };
 
-
-// ================= SHOW SECTION =================
+// ================= SHOW SECTION (simple version) =================
 window.showSection = function (section) {
-
     const content = document.getElementById("content");
-    if (!content) return;
 
     if (section === "portal") {
-        const user = JSON.parse(sessionStorage.getItem("user"));
+        const user = JSON.parse(localStorage.getItem("user"));
 
         content.innerHTML = `
-            <h3>Welcome ${user ? user.username : ""}</h3>
-            <p>Clinic Portal Dashboard</p>
+            <h3>Welcome ${user.username}</h3>
+            <p>Role: ${user.role}</p>
         `;
     }
 
-    else if (section === "services") {
-        content.innerHTML = `
-            <h3>Clinic Services</h3>
-            <p>Services are loaded from backend.</p>
-        `;
+    if (section === "services") {
+        content.innerHTML = `<h3>Services</h3><p>All clinic services here</p>`;
     }
 
-    else if (section === "location") {
-        content.innerHTML = `
-            <h3>Location</h3>
-            <p>Ha Pena-Pena Green City, Maseru, Lesotho</p>
-        `;
-    }
-
-    else if (section === "about") {
-        content.innerHTML = `
-            <h3>About Clinic</h3>
-            <p>Botho University Clinic provides free student healthcare.</p>
-        `;
-    }
-
-    else if (section === "support") {
-        content.innerHTML = `
-            <h3>Support</h3>
-            <p>Support system will connect to backend later.</p>
-        `;
-    }
-
-    else if (section === "ai") {
-        content.innerHTML = `
-            <h3>AI Assistant</h3>
-            <textarea id="aiInput" placeholder="Ask a question..."></textarea>
-            <button onclick="askAI()">Ask</button>
-            <p id="aiResponse"></p>
-        `;
-    }
-
-    else if (section === "announcements") {
-        content.innerHTML = `
-            <h3>Announcements</h3>
-            <p>No announcements yet.</p>
-        `;
+    if (section === "adminUsers") {
+        content.innerHTML = `<h3>Admin Users Panel</h3><p>Coming soon</p>`;
     }
 };
-
-
-// ================= AI =================
-window.askAI = function () {
-
-    const input = document.getElementById("aiInput").value;
-    const response = document.getElementById("aiResponse");
-
-    if (!input) {
-        response.innerText = "Please type a question";
-        return;
-    }
-
-    response.innerText = "AI: " + input + " (backend AI not connected yet)";
-};
-
 
 // ================= LOGOUT =================
 window.logout = function () {
-    sessionStorage.removeItem("user");
+    localStorage.removeItem("user");
     window.location.href = "login.html";
 };
