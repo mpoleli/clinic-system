@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import psycopg2
 import os
@@ -9,109 +9,107 @@ CORS(app)
 # ================= DATABASE =================
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-def get_db():
-    try:
-        return psycopg2.connect(DATABASE_URL, sslmode="require")
-    except Exception as e:
-        print("DB connection error:", e)
-        return None
+def get_db_connection():
+    if not DATABASE_URL:
+        raise Exception("DATABASE_URL is not set")
+    return psycopg2.connect(DATABASE_URL)
 
-
-# ================= INIT DATABASE SAFE =================
+# ================= INIT DB =================
 def init_db():
-    conn = get_db()
-    if conn is None:
-        print("Database not ready yet")
-        return
-
+    conn = get_db_connection()
     cur = conn.cursor()
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
-            username TEXT,
-            email TEXT UNIQUE,
-            password TEXT,
-            user_type TEXT DEFAULT 'student'
-        )
+            username TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            role TEXT NOT NULL
+        );
     """)
 
     conn.commit()
     cur.close()
     conn.close()
+    print("Database ready")
 
-
-# Run safely (Render-safe)
-try:
-    init_db()
-except Exception as e:
-    print("Init DB failed:", e)
-
+init_db()
 
 # ================= REGISTER =================
 @app.route("/register", methods=["POST"])
 def register():
-    data = request.get_json()
-
-    conn = get_db()
-    if conn is None:
-        return jsonify({"error": "Database not connected"}), 500
-
-    cur = conn.cursor()
-
     try:
-        cur.execute(
-            "INSERT INTO users (username, email, password, user_type) VALUES (%s, %s, %s, %s)",
-            (data["username"], data["email"], data["password"], "student")
-        )
+        data = request.get_json()
+
+        username = data["username"]
+        email = data["email"]
+        password = data["password"]
+
+        # ROLE LOGIC
+        if email == "admin@bothouniversityclinic.ac.bw":
+            role = "ADMIN"
+        elif email.endswith("@bothouniversity.ac.bw"):
+            role = "LECTURER"
+        else:
+            role = "STUDENT"
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("""
+            INSERT INTO users (username, email, password, role)
+            VALUES (%s, %s, %s, %s)
+        """, (username, email, password, role))
+
         conn.commit()
+        cur.close()
+        conn.close()
 
         return jsonify({"message": "User registered successfully"})
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
+    except psycopg2.errors.UniqueViolation:
+        return jsonify({"message": "Email already exists"}), 400
 
-    finally:
-        cur.close()
-        conn.close()
+    except Exception as e:
+        return jsonify({"message": "Server error", "error": str(e)}), 500
 
 
 # ================= LOGIN =================
 @app.route("/login", methods=["POST"])
 def login():
-    data = request.get_json()
+    try:
+        data = request.get_json()
+        email = data["email"]
+        password = data["password"]
 
-    conn = get_db()
-    if conn is None:
-        return jsonify({"error": "Database not connected"}), 500
+        conn = get_db_connection()
+        cur = conn.cursor()
 
-    cur = conn.cursor()
+        cur.execute("""
+            SELECT id, username, email, role
+            FROM users
+            WHERE email=%s AND password=%s
+        """, (email, password))
 
-    cur.execute(
-        "SELECT id, username, user_type FROM users WHERE email=%s AND password=%s",
-        (data["email"], data["password"])
-    )
+        user = cur.fetchone()
 
-    user = cur.fetchone()
+        cur.close()
+        conn.close()
 
-    cur.close()
-    conn.close()
+        if user:
+            return jsonify({
+                "id": user[0],
+                "username": user[1],
+                "email": user[2],
+                "role": user[3],
+                "message": "Login successful"
+            })
 
-    if user:
-        return jsonify({
-            "message": "Login successful",
-            "user_id": user[0],
-            "username": user[1],
-            "user_type": user[2]
-        })
+        return jsonify({"message": "Invalid credentials"}), 401
 
-    return jsonify({"error": "Invalid credentials"}), 401
-
-
-# ================= HEALTH CHECK (IMPORTANT FOR RENDER) =================
-@app.route("/")
-def home():
-    return render_template("login.html")
+    except Exception as e:
+        return jsonify({"message": "Server error", "error": str(e)}), 500
 
 
 # ================= RUN =================
