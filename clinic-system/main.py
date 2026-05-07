@@ -12,29 +12,34 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 def get_db_connection():
     if not DATABASE_URL:
         raise Exception("DATABASE_URL is not set")
-    return psycopg2.connect(DATABASE_URL)
+
+    return psycopg2.connect(DATABASE_URL, sslmode="require")
+
 
 # ================= INIT DB =================
 def init_db():
-    conn = get_db_connection()
-    cur = conn.cursor()
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            username TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            role TEXT NOT NULL
-        );
-    """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                role TEXT NOT NULL
+            );
+        """)
 
-    conn.commit()
-    cur.close()
-    conn.close()
-    print("Database ready")
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("Database ready")
 
-init_db()
+    except Exception as e:
+        print("Database init error:", e)
+
 
 # ================= REGISTER =================
 @app.route("/register", methods=["POST"])
@@ -110,6 +115,12 @@ def login():
 
     except Exception as e:
         return jsonify({"message": "Server error", "error": str(e)}), 500
+
+
+# ================= HEALTH CHECK =================
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({"message": "Clinic API is running"})
 
 
 # ================= RUN =================
