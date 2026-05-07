@@ -20,9 +20,8 @@ def get_db_connection():
     )
 
 
-# ================= INIT DATABASE =================
+# ================= INIT DATABASE (SAFE) =================
 def init_db():
-
     conn = None
     cur = None
 
@@ -30,39 +29,28 @@ def init_db():
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # DELETE OLD TABLE
+        # SAFE TABLE CREATION (NO DROP)
         cur.execute("""
-            DROP TABLE IF EXISTS users;
-        """)
-
-        # CREATE NEW TABLE
-        cur.execute("""
-            CREATE TABLE users (
+            CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 username TEXT NOT NULL,
                 email TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
-                role TEXT NOT NULL
+                role TEXT NOT NULL DEFAULT 'STUDENT'
             );
         """)
 
         conn.commit()
-
-        print("Fresh database created successfully")
+        print("Database ready")
 
     except Exception as e:
-        print("DATABASE ERROR:", e)
+        print("DATABASE INIT ERROR:", e)
 
     finally:
         if cur:
             cur.close()
-
         if conn:
             conn.close()
-
-
-# RUN DB INIT
-init_db()
 
 
 # ================= HOME =================
@@ -96,10 +84,8 @@ def register():
         # ROLE LOGIC
         if email == "admin@bothouniversityclinic.ac.bw":
             role = "ADMIN"
-
         elif email.endswith("@bothouniversity.ac.bw"):
             role = "LECTURER"
-
         else:
             role = "STUDENT"
 
@@ -112,9 +98,7 @@ def register():
             (email,)
         )
 
-        existing_user = cur.fetchone()
-
-        if existing_user:
+        if cur.fetchone():
             return jsonify({
                 "message": "Email already exists"
             }), 400
@@ -133,10 +117,10 @@ def register():
 
     except Exception as e:
 
+        print("REGISTER ERROR:", e)
+
         if conn:
             conn.rollback()
-
-        print("REGISTER ERROR:", e)
 
         return jsonify({
             "message": "Server error",
@@ -146,7 +130,6 @@ def register():
     finally:
         if cur:
             cur.close()
-
         if conn:
             conn.close()
 
@@ -205,14 +188,11 @@ def login():
     finally:
         if cur:
             cur.close()
-
         if conn:
             conn.close()
 
 
 # ================= RUN =================
 if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=10000
-    )
+    init_db()
+    app.run(host="0.0.0.0", port=10000)
