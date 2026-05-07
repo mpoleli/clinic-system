@@ -16,26 +16,34 @@ def get_db_connection():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
 
-# ================= INIT DB =================
+# ================= INIT DATABASE (SAFE MANUAL FIX) =================
 def init_db():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
 
+        # 1. Create table if it does NOT exist
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 username TEXT NOT NULL,
                 email TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
-                role TEXT NOT NULL
+                role TEXT
             );
+        """)
+
+        # 2. Add missing column safely (this is your FIX)
+        cur.execute("""
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS role TEXT;
         """)
 
         conn.commit()
         cur.close()
         conn.close()
-        print("Database ready")
+
+        print("Database initialized successfully")
 
     except Exception as e:
         print("Database init error:", e)
