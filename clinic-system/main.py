@@ -9,92 +9,165 @@ CORS(app)
 # ================= DATABASE =================
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+
 def get_db_connection():
     if not DATABASE_URL:
         raise Exception("DATABASE_URL is not set")
 
-    return psycopg2.connect(DATABASE_URL, sslmode="require")
+    return psycopg2.connect(
+        DATABASE_URL,
+        sslmode="require"
+    )
 
 
-# ================= INIT DATABASE (SAFE MANUAL FIX) =================
+# ================= INIT DATABASE =================
 def init_db():
+
+    conn = None
+    cur = None
+
     try:
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # 1. Create table if it does NOT exist
+        # DELETE OLD TABLE
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS users (
+            DROP TABLE IF EXISTS users;
+        """)
+
+        # CREATE NEW TABLE
+        cur.execute("""
+            CREATE TABLE users (
                 id SERIAL PRIMARY KEY,
                 username TEXT NOT NULL,
                 email TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
-                role TEXT
+                role TEXT NOT NULL
             );
         """)
 
-        # 2. Add missing column safely (this is your FIX)
-        cur.execute("""
-            ALTER TABLE users
-            ADD COLUMN IF NOT EXISTS role TEXT;
-        """)
-
         conn.commit()
-        cur.close()
-        conn.close()
 
-        print("Database initialized successfully")
+        print("Fresh database created successfully")
 
     except Exception as e:
-        print("Database init error:", e)
+        print("DATABASE ERROR:", e)
+
+    finally:
+        if cur:
+            cur.close()
+
+        if conn:
+            conn.close()
+
+
+# RUN DB INIT
+init_db()
+
+
+# ================= HOME =================
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({
+        "message": "Clinic API is running"
+    })
 
 
 # ================= REGISTER =================
 @app.route("/register", methods=["POST"])
 def register():
+
+    conn = None
+    cur = None
+
     try:
         data = request.get_json()
 
-        username = data["username"]
-        email = data["email"]
-        password = data["password"]
+        username = data.get("username")
+        email = data.get("email")
+        password = data.get("password")
+
+        # VALIDATION
+        if not username or not email or not password:
+            return jsonify({
+                "message": "All fields are required"
+            }), 400
 
         # ROLE LOGIC
         if email == "admin@bothouniversityclinic.ac.bw":
             role = "ADMIN"
+
         elif email.endswith("@bothouniversity.ac.bw"):
             role = "LECTURER"
+
         else:
             role = "STUDENT"
 
         conn = get_db_connection()
         cur = conn.cursor()
 
+        # CHECK EXISTING EMAIL
+        cur.execute(
+            "SELECT id FROM users WHERE email=%s",
+            (email,)
+        )
+
+        existing_user = cur.fetchone()
+
+        if existing_user:
+            return jsonify({
+                "message": "Email already exists"
+            }), 400
+
+        # INSERT USER
         cur.execute("""
             INSERT INTO users (username, email, password, role)
             VALUES (%s, %s, %s, %s)
         """, (username, email, password, role))
 
         conn.commit()
-        cur.close()
-        conn.close()
 
-        return jsonify({"message": "User registered successfully"})
-
-    except psycopg2.errors.UniqueViolation:
-        return jsonify({"message": "Email already exists"}), 400
+        return jsonify({
+            "message": "User registered successfully"
+        }), 201
 
     except Exception as e:
-        return jsonify({"message": "Server error", "error": str(e)}), 500
+
+        if conn:
+            conn.rollback()
+
+        print("REGISTER ERROR:", e)
+
+        return jsonify({
+            "message": "Server error",
+            "error": str(e)
+        }), 500
+
+    finally:
+        if cur:
+            cur.close()
+
+        if conn:
+            conn.close()
 
 
 # ================= LOGIN =================
 @app.route("/login", methods=["POST"])
 def login():
+
+    conn = None
+    cur = None
+
     try:
         data = request.get_json()
-        email = data["email"]
-        password = data["password"]
+
+        email = data.get("email")
+        password = data.get("password")
+
+        if not email or not password:
+            return jsonify({
+                "message": "Email and password required"
+            }), 400
 
         conn = get_db_connection()
         cur = conn.cursor()
@@ -107,9 +180,6 @@ def login():
 
         user = cur.fetchone()
 
-        cur.close()
-        conn.close()
-
         if user:
             return jsonify({
                 "id": user[0],
@@ -119,19 +189,30 @@ def login():
                 "message": "Login successful"
             })
 
-        return jsonify({"message": "Invalid credentials"}), 401
+        return jsonify({
+            "message": "Invalid credentials"
+        }), 401
 
     except Exception as e:
-        return jsonify({"message": "Server error", "error": str(e)}), 500
 
+        print("LOGIN ERROR:", e)
 
-# ================= HEALTH CHECK =================
-@app.route("/", methods=["GET"])
-def home():
-    return jsonify({"message": "Clinic API is running"})
+        return jsonify({
+            "message": "Server error",
+            "error": str(e)
+        }), 500
+
+    finally:
+        if cur:
+            cur.close()
+
+        if conn:
+            conn.close()
 
 
 # ================= RUN =================
 if __name__ == "__main__":
-    init_db()
-    app.run(host="0.0.0.0", port=10000)
+    app.run(
+        host="0.0.0.0",
+        port=10000
+    )
